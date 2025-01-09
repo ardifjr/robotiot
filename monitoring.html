@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <style>
+        :root {
+            --gradient-primary: linear-gradient(135deg, #2193b0, #6dd5ed);
+            --gradient-secondary: linear-gradient(135deg, #373B44, #4286f4);
+            --accent-color: #4286f4;
+            --text-primary: #2c3e50;
+            --text-secondary: #34495e;
+            --background: #f8f9fa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--background);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--gradient-primary);
+            padding: 2rem;
+            color: white;
+            clip-path: polygon(0 0, 100% 0, 100% 85%, 0 100%);
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .header-stats {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 1rem;
+            border-radius: 10px;
+            backdrop-filter: blur(5px);
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .main-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-section {
+            grid-column: span 8;
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .metrics-section {
+            grid-column: span 4;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .metric-card {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .activity-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .activity-list {
+            list-style: none;
+            margin-top: 1rem;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.2s;
+        }
+
+        .activity-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .activity-item .time {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-left: auto;
+        }
+
+        .trend-indicator {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            border-radius: 15px;
+            font-size: 0.875rem;
+            margin-left: 0.5rem;
+        }
+
+        .trend-up {
+            background-color: #e3fcef;
+            color: #0a7b3d;
+        }
+
+        .trend-down {
+            background-color: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent-color);
+            margin: 0.5rem 0;
+        }
+
+        @media (max-width: 1200px) {
+            .analytics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-section, .metrics-section {
+                grid-column: span 12;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 1.5rem;
+            }
+
+            .main-container {
+                padding: 0 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Monitoring Data</h1>
+        <div class="header-stats" id="header-stats">
+            <!-- Populated by JavaScript -->
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="analytics-grid">
+            <section class="chart-section">
+                <h2>Tren Aktivitas Pertanyaan</h2>
+                <canvas id="activity-trends"></canvas>
+            </section>
+
+            <div class="metrics-section">
+                <div class="metric-card">
+                    <h3>Jam Puncak Aktivitas</h3>
+                    <canvas id="hourly-distribution"></canvas>
+                </div>
+                <div class="metric-card">
+                    <h3>Keterlibatan Pengguna</h3>
+                    <div id="engagement-metrics"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="activity-section">
+            <div class="metric-card">
+                <h3>Aktivitas Terkini</h3>
+                <ul class="activity-list" id="recent-activity"></ul>
+            </div>
+            <div class="metric-card">
+                <h3>Kategori Pertanyaan</h3>
+                <canvas id="categories-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://robotiotpy.onrender.com/api/v1/getQuestions';
+
+        function formatDate(dateString) {
+            return moment(dateString).format('MMM D, YYYY h:mm A');
+        }
+
+        function getTimeAgo(dateString) {
+            return moment(dateString).fromNow();
+        }
+
+        function analyzeQuestionType(question) {
+            question = question.toLowerCase();
+            if (question.includes('bagaimana') || question.includes('apa') || question.includes('kenapa')) {
+                return 'Informasi';
+            } else if (question.includes('bisa') || question.includes('bisa')) {
+                return 'Izin';
+            } else if (question.includes('dimana') || question.includes('kapan')) {
+                return 'Lokasi/Waktu';
+            } else if (question.includes('?')) {
+                return 'Pertanyaan General';
+            }
+            return 'Statement';
+        }
+
+        function calculateHourlyDistribution(data) {
+            const hourly = new Array(24).fill(0);
+            data.forEach(item => {
+                const hour = new Date(item.timestamp).getHours();
+                hourly[hour]++;
+            });
+            return hourly;
+        }
+
+        fetch(API_URL)
+            .then(response => response.json())
+            .then(data => {
+                // Process timestamps
+                data = data.map(item => ({
+                    ...item,
+                    timestamp: new Date(item.timestamp),
+                    type: analyzeQuestionType(item.q)
+                }));
+
+                // Header Stats
+                const headerStats = document.getElementById('header-stats');
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                // Hitung jumlah pertanyaan hari ini
+                const todayCount = data.filter(item => {
+                    const itemDate = new Date(item.timestamp);
+                    itemDate.setHours(0, 0, 0, 0);
+                    return itemDate.getTime() === today.getTime();
+                }).length;
+                const uniqueUsers = new Set(data.map(item => item.q)).size;
+                const avgResponseTime = Math.floor(Math.random() * 10) + 1;
+                // Hitung rata-rata pertanyaan per hari bulan ini
+                const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                const pertanyaanBulanIni = data.filter(item => {
+                    const itemDate = new Date(item.timestamp);
+                    return (
+                        itemDate.getFullYear() === today.getFullYear() &&
+                        itemDate.getMonth() === today.getMonth()
+                    );
+                });
+                
+                // Hitung jumlah hari yang sudah berlalu di bulan ini
+                const daysPassed = today.getDate();
+                const rataRataPerHari = pertanyaanBulanIni.length > 0 ? (pertanyaanBulanIni.length / daysPassed).toFixed(1) : 0;                
+                // Statistik
+                const stats = [
+                    { label: 'Pertanyaan Hari Ini', value: todayCount },
+                    { label: 'Rata-Rata Pertanyaan / Hari Bulan Ini', value: rataRataPerHari },
+                    { label: 'Total Bulan Ini', value: pertanyaanBulanIni.length },
+                ];
+                
+                // Cetak statistik
+                stats.forEach(stat => {
+                    console.log(`${stat.label}: ${stat.value}`);
+                });
+                
+
+                stats.forEach(stat => {
+                    const div = document.createElement('div');
+                    div.className = 'stat-item';
+                    div.innerHTML = `
+                        <div>${stat.label}</div>
+                        <div class="metric-value">${stat.value}</div>
+                    `;
+                    headerStats.appendChild(div);
+                });
+
+                // Activity Trends Chart
+                const activityCtx = document.getElementById('activity-trends').getContext('2d');
+                const groupedByDay = data.reduce((acc, item) => {
+                    const date = item.timestamp.toISOString().split('T')[0];
+                    acc[date] = (acc[date] || 0) + 1;
+                    return acc;
+                }, {});
+
+                new Chart(activityCtx, {
+                    type: 'line',
+                    data: {
+                        labels: Object.keys(groupedByDay),
+                        datasets: [{
+                            label: 'Daily Questions',
+                            data: Object.values(groupedByDay),
+                            borderColor: '#4286f4',
+                            backgroundColor: 'rgba(66, 134, 244, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'top'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Hourly Distribution Chart
+                const hourlyCtx = document.getElementById('hourly-distribution').getContext('2d');
+                const hourlyData = calculateHourlyDistribution(data);
+
+                new Chart(hourlyCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: Array.from({length: 24}, (_, i) => `${i}:00`),
+                        datasets: [{
+                            label: 'Questions per Hour',
+                            data: hourlyData,
+                            backgroundColor: '#6dd5ed'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Categories Chart
+                const categoriesCtx = document.getElementById('categories-chart').getContext('2d');
+                const questionTypes = data.reduce((acc, item) => {
+                    acc[item.type] = (acc[item.type] || 0) + 1;
+                    return acc;
+                }, {});
+
+                new Chart(categoriesCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(questionTypes),
+                        datasets: [{
+                            data: Object.values(questionTypes),
+                            backgroundColor: [
+                                '#FF6B6B',
+                                '#4ECDC4',
+                                '#45B7D1',
+                                '#96CEB4',
+                                '#FFEEAD'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'right'
+                            }
+                        }
+                    }
+                });
+
+                // Recent Activity
+                const recentActivityList = document.getElementById('recent-activity');
+                data.slice(-5).reverse().forEach(item => {
+                    const li = document.createElement('li');
+                    li.className = 'activity-item';
+                    li.innerHTML = `
+                        <div>
+                            <strong>${item.q}</strong>
+                            <span class="trend-indicator ${Math.random() > 0.5 ? 'trend-up' : 'trend-down'}">
+                                ${item.type}
+                            </span>
+                        </div>
+                        <span class="time">${getTimeAgo(item.timestamp)}</span>
+                    `;
+                    recentActivityList.appendChild(li);
+                });
+
+                // Engagement Metrics
+                const engagementDiv = document.getElementById('engagement-metrics');
+                const engagementMetrics = {
+                    'Pertanyaan/Penggunaan Rata-rata': (data.length / uniqueUsers).toFixed(2),
+                    'Puncak kesibukan': Object.entries(hourlyData)
+                        .reduce((a, b) => a[1] > b[1] ? a : b)[0] + ':00',
+                    'Tipe Paling Umum': Object.entries(questionTypes)
+                        .reduce((a, b) => a[1] > b[1] ? a : b)[0]
+                };
+
+                Object.entries(engagementMetrics).forEach(([label, value]) => {
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <div style="margin: 1rem 0;">
+                            <div style="color: var(--text-secondary);">${label}</div>
+                            <div class="metric-value" style="font-size: 1.5rem;">${value}</div>
+                        </div>
+                    `;
+                    engagementDiv.appendChild(div);
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching data:', error);
+            });
+    </script>
+</body>
+</html>
